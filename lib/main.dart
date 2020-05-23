@@ -18,15 +18,23 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   String pathPDF = "";
+  String pathPDFTurk = "";
+
+  // fetch PDF files
+  void fetchFiles() async {
+    var file1 = await fromAsset('assets/pdfFiles/evrad_AR.pdf', 'evrad_AR.pdf');
+    var file2 = await fromAsset('assets/pdfFiles/js.pdf', 'js.pdf');
+
+    setState(() {
+      pathPDF = file1.path;
+      pathPDFTurk = file2.path;
+    });
+  }
 
   @override
   void initState() {
     super.initState();
-    fromAsset('assets/pdfFiles/evrad_AR.pdf', 'evrad_AR.pdf').then((f) {
-      setState(() {
-        pathPDF = f.path;
-      });
-    });
+    fetchFiles();
   }
 
   Future<File> fromAsset(String asset, String filename) async {
@@ -69,7 +77,7 @@ class _MyAppState extends State<MyApp> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => PDFScreen(path: pathPDF),
+                          builder: (context) => PDFScreen(path: pathPDF, pathTurk: pathPDFTurk,),
                         ),
                       );
                     }
@@ -99,8 +107,9 @@ MaterialColor themeColor = const MaterialColor(0xFF2D45CB,
 
 class PDFScreen extends StatefulWidget {
   final String path;
+  final String pathTurk;
 
-  PDFScreen({Key key, this.path}) : super(key: key);
+  PDFScreen({Key key, this.path, this.pathTurk}) : super(key: key);
 
   _PDFScreenState createState() => _PDFScreenState();
 }
@@ -110,51 +119,93 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
   Completer<PDFViewController>();
   int pages = 0;
   int currentPage = 0;
+  int totalPages;
   bool isReady = false;
+  // for switching PDF files (for example, switch PDF file in english to turkish)
+  bool _switchLangToTurk = false;
   String errorMessage = '';
   double readSpeed = 1.0;
+  UniqueKey pdfViewerKey;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // didChangeMetrics rebuilds the PDF viewer when the device is rotated, by assigning it a new unique key
+  @override
+  void didChangeMetrics() {
+    if (Platform.isAndroid) {
+      Future.delayed(Duration(milliseconds: 100), () {
+        setState(() => pdfViewerKey = UniqueKey());
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Plugin example app')),
+      appBar: AppBar(
+        title: const Text('Plugin example app'),
+        actions: <Widget>[
+          Padding(
+            padding: const EdgeInsets.only(top: 22.0),
+            child: Text('${currentPage + 1} / $totalPages'),
+          ),
+          SizedBox(width: 4.0,)
+        ],
+      ),
       body: Stack(
         children: <Widget>[
-          PDFView(
-            filePath: widget.path,
-            enableSwipe: true,
-            swipeHorizontal: true,
-            autoSpacing: true,
-            pageFling: true,
-            defaultPage: currentPage,
-            fitPolicy: FitPolicy.HEIGHT,
-            onRender: (_pages) {
-              setState(() {
-                pages = _pages;
-                isReady = true;
-              });
-            },
-            onError: (error) {
-              setState(() {
-                errorMessage = error.toString();
-              });
-              print(error.toString());
-            },
-            onPageError: (page, error) {
-              setState(() {
-                errorMessage = '$page: ${error.toString()}';
-              });
-              print('$page: ${error.toString()}');
-            },
-            onViewCreated: (PDFViewController pdfViewController) {
-              _controller.complete(pdfViewController);
-            },
-            onPageChanged: (int page, int total) {
-              print('page change: $page/$total');
-              setState(() {
-                currentPage = page;
-              });
-            },
+          Container(
+            height: double.infinity,
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(horizontal: 4.0),
+            child: PDFView(
+                key: pdfViewerKey,
+                filePath: _switchLangToTurk ? widget.pathTurk : widget.path,
+                enableSwipe: true,
+                swipeHorizontal: true,
+                autoSpacing: true,
+                pageFling: true,
+                defaultPage: currentPage,
+                fitPolicy: FitPolicy.WIDTH, // use FitPolicy.WIDTH to render PDF in full screen
+                onRender: (_pages) {
+                  setState(() {
+                    pages = _pages;
+                    isReady = true;
+                  });
+                },
+                onError: (error) {
+                  setState(() {
+                    errorMessage = error.toString();
+                  });
+                  print(error.toString());
+                },
+                onPageError: (page, error) {
+                  setState(() {
+                    errorMessage = '$page: ${error.toString()}';
+                  });
+                  print('$page: ${error.toString()}');
+                },
+                onViewCreated: (_controller) {
+                  if (currentPage != null) _controller.setPage(currentPage);
+                },
+                onPageChanged: (int page, int total) {
+                  print('page change: $page/$total');
+                  setState(() {
+                    currentPage = page;
+                    totalPages = total;
+                  });
+                },
+              )
           ),
           errorMessage.isEmpty
               ? !isReady
@@ -273,7 +324,7 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
                 mainAxisAlignment: MainAxisAlignment.start,
                 children: <Widget>[
                   Padding(
-                    padding: const EdgeInsets.only(left: 20, right: 20),
+                    padding: const EdgeInsets.only(left: 5, right: 5),
                     child: Column(
                       children: <Widget>[
                         IconButton(
@@ -285,7 +336,7 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.only(left: 20, right: 20),
+                    padding: const EdgeInsets.only(left: 5, right: 5),
                     child: Column(
                       children: <Widget>[
                         IconButton(
@@ -297,7 +348,7 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.only(left: 20, right: 20),
+                    padding: const EdgeInsets.only(left: 5, right: 5),
                     child: Column(
                       children: <Widget>[
                         IconButton(
@@ -306,6 +357,33 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
                           onPressed: () {
                           },
                         ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 5),
+                    child: Row(
+                      children: <Widget>[
+                        Switch(
+                          value: _switchLangToTurk,
+                          inactiveThumbColor: Colors.grey[300],
+                          inactiveTrackColor: Colors.grey[300],
+                          activeTrackColor: Colors.white,
+                          activeColor: Colors.orange,
+                          onChanged: (bool value) {
+                            print("Switched to: $value");
+                            setState(() {
+                              _switchLangToTurk = value;
+                              pdfViewerKey = UniqueKey();
+                            });
+                          }
+                        ),
+                        SizedBox(width: 1.0,),
+                        Text("TURK",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14.0,
+                        ),)
                       ],
                     ),
                   ),
@@ -325,84 +403,96 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
 
   showMenu() {
     showModalBottomSheet(
-        context: context,
-        builder: (BuildContext context) {
-          return Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(13),
-              color: Color(0xff223598),
-              boxShadow: [
-                BoxShadow(color: Color(0xff223598), spreadRadius: 4),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: <Widget>[
-                Container(
-                  height: 36,
-                ),
-                SizedBox(
+      context: context,
+      builder: (BuildContext context) {
+        // showModalBottomSheet is a stateless widget so use a StatefulBuilder widget to ensure
+        // that the widget rebuilds when the slider value changes
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(13),
+                color: Color(0xff223598),
+                boxShadow: [
+                  BoxShadow(color: Color(0xff223598), spreadRadius: 4),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  Container(
+                    height: 36,
+                  ),
+                  SizedBox(
                     height: 120,
                     child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(16.0),
-                            topRight: Radius.circular(16.0),
-                          ),
-                          color: Color(0xff2e44cb),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(16.0),
+                          topRight: Radius.circular(16.0),
                         ),
-                        child: Stack(
-                          alignment: Alignment(0, 0),
-                          overflow: Overflow.visible,
-                          children: <Widget>[
-                            Positioned(
-                              top: -26,
-                              child: Container(
-                                height: 60,
-                                child: CircleAvatar(
-                                  radius: 50,
-                                  backgroundColor: Colors.orange,
-                                  child: Center(
-                                      child: Text(readSpeed.toStringAsFixed(2),
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                        ),)
-                                  ),
+                        color: Color(0xff2e44cb),
+                      ),
+                      child: Stack(
+                        alignment: Alignment(0, 0),
+                        overflow: Overflow.visible,
+                        children: <Widget>[
+                          Positioned(
+                            top: -26,
+                            child: Container(
+                              height: 60,
+                              child: CircleAvatar(
+                                radius: 50,
+                                backgroundColor: Colors.orange,
+                                child: Center(
+                                  child: Text(readSpeed.toStringAsFixed(2),
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                    ),
+                                  )
                                 ),
                               ),
                             ),
-                            Positioned(
-                              child: ListView(
-                                children: <Widget>[
-                                  Padding(
-                                      padding: const EdgeInsets.only(top:45),
-                                      child: Text('OKUMA HIZI',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                        ),)
-                                  ),
-                                  Slider(
-                                    value: readSpeed,
-                                    activeColor: Colors.orange,
-                                    inactiveColor: Colors.white,
-                                    min: 0.25,
-                                    max: 2.50,
-                                    divisions: 9,
-                                    label: '$readSpeed',
-                                    onChanged: (value) {
-                                      setState(() { readSpeed = value; });
-                                    },
-                                  ),
-                                ],
-                              ),
-                            )
-                          ],
-                        ))),
-              ],
-            ),
-          );
-        });
+                          ),
+                          Positioned(
+                            child: ListView(
+                              children: <Widget>[
+                                Padding(
+                                  padding: const EdgeInsets.only(top:45),
+                                  child: Text('OKUMA HIZI',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                ),
+                                Slider(
+                                  value: readSpeed,
+                                  activeColor: Colors.orange,
+                                  inactiveColor: Colors.white,
+                                  min: 0.25,
+                                  max: 2.50,
+                                  divisions: 9,
+                                  label: '$readSpeed',
+                                  onChanged: (value) {
+                                    // print('Slider value changed: $value');
+                                    setState(() { readSpeed = value; });
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      )
+                    ),
+                  ),
+                ]
+              ),
+            );
+          }
+        );
+      }
+    );
   }
 }
